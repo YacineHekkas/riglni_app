@@ -1,0 +1,130 @@
+{
+  "project_info": {
+    "project_number": "1053114873455",
+    "project_id": "riglni-ac314",
+    "storage_bucket": "riglni-ac314.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1053114873455:android:3529fe2396c201a78fff9a",
+        "android_client_info": {
+          "package_name": "com.hkprovider.riglni_provider"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1053114873455-e78ek4av3ssle6b3m4hugsa61sicmsl3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hkprovider.riglni_provider",
+            "certificate_hash": "de4850e7d751fd7b24dfda98a558d913712b6cad"
+          }
+        },
+        {
+          "client_id": "1053114873455-g5tvnjlk9n7evkrmnhb2rumgv152bbet.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hkprovider.riglni_provider",
+            "certificate_hash": "52bbb8c3bc66531ec9b15253da3809eb2bea2b93"
+          }
+        },
+        {
+          "client_id": "1053114873455-hf40kr90eabt1qbmcmr93h4elsm8o79f.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCYloSRvSO9ZyfvJtTBT1nqf36vifhW_3A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1053114873455-hf40kr90eabt1qbmcmr93h4elsm8o79f.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1053114873455-ikonjtn34n08gok1njleivqe7qji62vi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.iqonic.provider"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1053114873455:android:093567e83e6c02da8fff9a",
+        "android_client_info": {
+          "package_name": "com.hkuser.riglni"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1053114873455-9a40au7mkmfh0tp5jc7fer6pst9d62a3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hkuser.riglni",
+            "certificate_hash": "3975e7b69862368251505894f3ae193914ac6407"
+          }
+        },
+        {
+          "client_id": "1053114873455-mjf8nmp20kupvh9ljhvi4pbsumd8m578.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hkuser.riglni",
+            "certificate_hash": "9a24ffe8613501c5c590db43da244a390997138f"
+          }
+        },
+        {
+          "client_id": "1053114873455-p7ou0n4a27ii9neqjnidinro3mg53lol.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hkuser.riglni",
+            "certificate_hash": "52bbb8c3bc66531ec9b15253da3809eb2bea2b93"
+          }
+        },
+        {
+          "client_id": "1053114873455-vfduedio3p8p35mj9jrm7uplohitlrsm.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.hkuser.riglni",
+            "certificate_hash": "0dce9a216dc403f9c5cd6b8c5b0b1c1f5a9fced3"
+          }
+        },
+        {
+          "client_id": "1053114873455-hf40kr90eabt1qbmcmr93h4elsm8o79f.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCYloSRvSO9ZyfvJtTBT1nqf36vifhW_3A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1053114873455-hf40kr90eabt1qbmcmr93h4elsm8o79f.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1053114873455-ikonjtn34n08gok1njleivqe7qji62vi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.iqonic.provider"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
