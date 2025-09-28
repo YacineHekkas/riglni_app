@@ -1,39 +1,145 @@
-name: iOS Resign
+name: Resign IPA
 
 on:
-  workflow_dispatch: # you can run it manually
+  workflow_dispatch:
 
 jobs:
-  build:
+  resign:
     runs-on: macos-latest
+    env:
+      # paths inside the runner:
+      IPA_INPUT_PATH: .github/workflows/MyApp.ipa    # path in repo to your unsigned ipa
+      WORKDIR: ${{ runner.temp }}/resign_workdir
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-    - name: Decode certificate
-      run: |
-        echo "$P12_BASE64" | base64 --decode > cert.p12
-        security create-keychain -p "" build.keychain
-        security import cert.p12 -k build.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
-        security list-keychains -s build.keychain
-        security unlock-keychain -p "" build.keychain
-        security set-key-partition-list -S apple-tool:,apple:,codesign -s -k "" build.keychain
+      - name: Prepare workspace
+        run: |
+          set -e
+          rm -rf "$WORKDIR"
+          mkdir -p "$WORKDIR"
+          ls -la
 
-    - name: Decode provisioning profile
-      run: |
-        mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-        echo "$MOBILEPROVISION_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/app.mobileprovision
+      - name: Decode secrets -> files
+        env:
+          P12_BASE64: ${{ secrets.P12_BASE64 }}
+          MOBILEPROVISION_BASE64: ${{ secrets.MOBILEPROVISION_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+        run: |
+          set -e
+          # decode p12 and mobileprovision into /tmp (safe)
+          printf '%s' "$P12_BASE64" | base64 --decode > "$WORKDIR/cert.p12"
+          printf '%s' "$MOBILEPROVISION_BASE64" | base64 --decode > "$WORKDIR/profile.mobileprovision"
+          ls -l "$WORKDIR"
+          file "$WORKDIR/cert.p12" || true
 
-    - name: Resign IPA
-      run: |
-        mkdir resign-output
-        cp your-app.ipa resign-output/
-        # unzip ipa
-        cd resign-output
-        unzip your-app.ipa -d Payload
-        # sign
-        codesign -f -s "Apple Distribution: YOUR NAME (TEAMID)" Payload/YourApp.app
-        # repackage
-        zip -r resigned.ipa Payload
-        cd ..
+      - name: Create keychain and import .p12 (make key accessible)
+        env:
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -e
+          KEYCHAIN="$RUNNER_TEMP/build.keychain"
+          # create keychain with a real non-empty password
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # make it the default for this session
+          security list-keychains -s "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          # import .p12 (allow codesign to access)
+          security import "$WORKDIR/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          # unlock it (needed)
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # set key partition list so codesign can use key without prompt
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "Keychain import done."
+          security find-identity -v -p codesigning
+
+      - name: Install Apple WWDR intermediate cert (needed to build chain)
+        run: |
+          set -e
+          # download Apple's intermediate cert (the URL below is Apple's standard; if it changes, upload the WWDR cert into secrets and import instead)
+          curl -s -o /tmp/AppleWWDRCA.cer https://developer.apple.com/certificationauthority/AppleWWDRCAG3.cer || true
+          # if curl did not download, try the older name (no harm) — but it's fine if it errors you'll see in logs
+          if [ -s /tmp/AppleWWDRCA.cer ]; then
+            security import /tmp/AppleWWDRCA.cer -k "$RUNNER_TEMP/build.keychain" -A || true
+            echo "WWDR cert imported."
+          else
+            echo "WWDR cert not downloaded; ensure the keychain has intermediate certs in another way."
+          fi
+          security find-certificate -a -c "Apple Worldwide Developer Relations" || true
+
+      - name: Resign IPA (unpack, embed profile, sign nested, sign app, repack)
+        run: |
+          set -euo pipefail
+          cd "$WORKDIR"
+
+          # copy the unsigned ipa to workdir
+          cp "$GITHUB_WORKSPACE/${IPA_INPUT_PATH}" ./app.ipa
+
+          # Unpack
+          unzip -q app.ipa -d MyApp_unpack
+          APP_PATH="$(ls MyApp_unpack/Payload/*.app | head -n1)"
+          echo "App path: $APP_PATH"
+
+          # embed provisioning profile (must match bundle ID)
+          cp "$WORKDIR/profile.mobileprovision" "$APP_PATH/embedded.mobileprovision"
+          echo "Embedded provisioning profile."
+
+          # extract entitlements from the provisioning profile
+          security cms -D -i "$WORKDIR/profile.mobileprovision" > profile.plist
+          /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' profile.plist > Entitlements.plist
+          echo "Entitlements written to: $(pwd)/Entitlements.plist"
+
+          # remove extended attributes
+          xattr -cr "$APP_PATH" || true
+
+          # get the identity string (first Apple Distribution identity)
+          IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*\"\(Apple Distribution:.*\)\".*/\1/p' | head -n1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "ERROR: no Apple Distribution identity found in keychain"; exit 1
+          fi
+          echo "Using signing identity: $IDENTITY"
+
+          # Sign nested code first: frameworks, dylibs, appex (adjust as needed)
+          echo "Signing frameworks..."
+          find "$APP_PATH" -type d -name "*.framework" -print0 | while IFS= read -r -d '' F; do
+            echo "  Signing framework: $F"
+            codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$F" || true
+          done
+
+          echo "Signing .dylib files..."
+          find "$APP_PATH" -type f -name "*.dylib" -print0 | while IFS= read -r -d '' D; do
+            echo "  Signing dylib: $D"
+            codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$D" || true
+          done
+
+          echo "Signing .appex extensions..."
+          find "$APP_PATH" -type d -name "*.appex" -print0 | while IFS= read -r -d '' E; do
+            echo "  Signing appex: $E"
+            codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$E" || true
+          done
+
+          # Finally sign the main app
+          echo "Signing main app: $APP_PATH"
+          codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$APP_PATH"
+
+          # Verify
+          echo "Verifying main app signature..."
+          codesign -vvv --deep --strict "$APP_PATH" 2>&1 || true
+          codesign -d --entitlements :- "$APP_PATH" || true
+          spctl -a -t exec -vv "$APP_PATH" || true
+
+          # Repack into signed ipa
+          cd MyApp_unpack
+          zip -qry ../SignedApp.ipa Payload
+          cd ..
+          echo "Signed IPA created at: $WORKDIR/SignedApp.ipa"
+          ls -l "$WORKDIR/SignedApp.ipa"
+
+      - name: Upload signed IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SignedApp.ipa
+          path: ${{ runner.temp }}/resign_workdir/SignedApp.ipa
