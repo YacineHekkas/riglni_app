@@ -23,7 +23,7 @@
             android:resource="@drawable/ic_stat_ic_notification" />
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3442121823665594~1283562350"/>
+            android:value="ca-app-pub-4177143032396996~7131709811"/>
 
         <activity
             android:name=".MainActivity"

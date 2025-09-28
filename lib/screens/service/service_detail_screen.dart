@@ -26,6 +26,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:nb_utils/nb_utils.dart';
 
+// NEW import for ads
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+
 import '../../utils/images.dart';
 import 'addons/service_addons_component.dart';
 
@@ -51,16 +54,53 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
   int selectedBookingAddressId = -1;
   BookingPackage? selectedPackage;
 
+  // Banner ad fields
+  BannerAd? _bannerAd;
+  bool _isAdLoaded = false;
+
   @override
   void initState() {
     super.initState();
     serviceAddonStore.selectedServiceAddon.clear();
     setStatusBarColor(transparentColor);
     init();
+    _initBannerAd();
   }
 
   void init() async {
     future = getServiceDetails(serviceId: widget.serviceId.validate(), customerId: appStore.userId);
+  }
+
+  Future<void> _initBannerAd() async {
+    // If MobileAds isn't initialized in main(), you can uncomment the next line:
+    // await MobileAds.instance.initialize();
+
+    // Use test ad unit while developing:
+    const testAdUnitId = 'ca-app-pub-4177143032396996/4449706151';
+    // Replace with your production ad unit id when ready:
+
+    _bannerAd = BannerAd(
+      adUnitId: testAdUnitId, // switch to productionAdUnitId for release
+      size: AdSize.banner,
+      request: AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (Ad ad) {
+          if (mounted) {
+            setState(() {
+              _isAdLoaded = true;
+            });
+          }
+        },
+        onAdFailedToLoad: (Ad ad, LoadAdError error) {
+          ad.dispose();
+          debugPrint('❌ BannerAd failed to load: $error');
+        },
+        onAdOpened: (Ad ad) => debugPrint('📢 BannerAd opened.'),
+        onAdClosed: (Ad ad) => debugPrint('🚪 BannerAd closed.'),
+      ),
+    );
+
+    await _bannerAd!.load();
   }
 
   //region Widgets
@@ -79,7 +119,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
             runSpacing: 16,
             children: List.generate(
               data.serviceAddressMapping!.length,
-              (index) {
+                  (index) {
                 ServiceAddressMapping value = data.serviceAddressMapping![index];
                 if (value.providerAddressMapping == null) return Offstage();
 
@@ -120,8 +160,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
           await ProviderInfoScreen(providerId: data.id).launch(context);
           setStatusBarColor(Colors.transparent);
         }),
-
-
       ],
     ).paddingAll(16);
   }
@@ -185,11 +223,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
         ),
         data.isNotEmpty
             ? Wrap(
-                children: List.generate(
-                  data.length,
-                  (index) => ReviewWidget(data: data[index]),
-                ),
-              ).paddingTop(8)
+          children: List.generate(
+            data.length,
+                (index) => ReviewWidget(data: data[index]),
+          ),
+        ).paddingTop(8)
             : Text(language.lblNoReviews, style: secondaryTextStyle()),
       ],
     ).paddingSymmetric(horizontal: 16);
@@ -238,6 +276,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
 
   @override
   void dispose() {
+    _bannerAd?.dispose();
     setStatusBarColor(widget.isFromProviderInfo ? primaryColor : transparentColor);
     super.dispose();
   }
@@ -248,11 +287,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
       if (snap.hasError) {
         return Text(snap.error.toString()).center();
       } else if (snap.hasData) {
+        // banner height (standard banner)
+        final double bannerHeight = AdSize.banner.height.toDouble();
+
         return Column(
           children: [
             Expanded(
               child: AnimatedScrollView(
-               // padding: EdgeInsets.only(bottom: 120),
                 listAnimationType: ListAnimationType.FadeIn,
                 fadeInConfiguration: FadeInConfiguration(duration: 2.seconds),
                 onSwipeRefresh: () async {
@@ -264,6 +305,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
                 },
                 children: [
                   ServiceDetailHeaderComponent(serviceDetail: snap.data!.serviceDetail!),
+
                   if (snap.data!.serviceDetail!.isOnlineService)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,6 +316,17 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
                         Text(language.thisServiceIsOnlineRemote, style: secondaryTextStyle()),
                       ],
                     ).paddingAll(16),
+
+                  // <-- Banner ad inserted BEFORE the description
+                  if (_isAdLoaded && _bannerAd != null)
+                    Container(
+                      width: context.width(),
+                      height: bannerHeight,
+                      alignment: Alignment.center,
+                      child: AdWidget(ad: _bannerAd!),
+                    ).paddingSymmetric(horizontal: 16, vertical: 8),
+
+                  // Description block (the ad appears above this)
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -281,14 +334,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> with TickerPr
                       8.height,
                       snap.data!.serviceDetail!.description.validate().isNotEmpty
                           ? ReadMoreText(
-                              snap.data!.serviceDetail!.description.validate(),
-                              style: secondaryTextStyle(),
-                              colorClickableText: context.primaryColor,
-                              textAlign: TextAlign.justify,
-                            )
+                        snap.data!.serviceDetail!.description.validate(),
+                        style: secondaryTextStyle(),
+                        colorClickableText: context.primaryColor,
+                        textAlign: TextAlign.justify,
+                      )
                           : Text(language.lblNotDescription, style: secondaryTextStyle()),
                     ],
                   ).paddingAll(16),
+
                   slotsAvailable(data: snap.data!.serviceDetail!.bookingSlots.validate(), isSlotAvailable: snap.data!.serviceDetail!.isSlotAvailable),
                   availableWidget(data: snap.data!.serviceDetail!),
                   providerWidget(data: snap.data!.provider!),

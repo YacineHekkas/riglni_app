@@ -42,7 +42,7 @@ class _DashboardFragmentState extends State<DashboardFragment> {
     });
 
     _bannerAd = BannerAd(
-      adUnitId: 'ca-app-pub-3442121823665594/7840515234',
+      adUnitId: 'ca-app-pub-4177143032396996/4449706151',
       // adUnitId: 'ca-app-pub-3940256099942544/6300978111', /// this is test
       size: AdSize.banner,
       request: AdRequest(),
