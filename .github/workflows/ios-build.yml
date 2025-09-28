@@ -10,7 +10,7 @@ jobs:
   resign:
     runs-on: macos-latest
     env:
-      # path inside the repo to your unsigned ipa (relative to repo root)
+      # Path inside the repo to your unsigned ipa (relative to repo root)
       IPA_INPUT_PATH: ".github/workflows/MyApp.ipa"
 
     steps:
@@ -73,84 +73,82 @@ jobs:
           security find-certificate -a -c "Apple Worldwide Developer Relations" || true
 
       - name: Resign IPA (unpack, embed profile, sign nested, sign app, repack)
-        # Resign IPA step (replace the run: block in your workflow)
-run: |
-  set -euo pipefail
-  WORKDIR="$RUNNER_TEMP/resign_workdir"
-  cd "$WORKDIR"
+        run: |
+          set -euo pipefail
+          WORKDIR="$RUNNER_TEMP/resign_workdir"
+          cd "$WORKDIR"
 
-  echo "Copying IPA from repo: $GITHUB_WORKSPACE/${IPA_INPUT_PATH}"
-  cp "$GITHUB_WORKSPACE/${IPA_INPUT_PATH}" ./app.ipa
+          echo "Copying IPA from repo: $GITHUB_WORKSPACE/${IPA_INPUT_PATH}"
+          cp "$GITHUB_WORKSPACE/${IPA_INPUT_PATH}" ./app.ipa
 
-  echo "Unpacking app.ipa..."
-  unzip -q app.ipa -d MyApp_unpack
+          echo "Unpacking app.ipa..."
+          unzip -q app.ipa -d MyApp_unpack
 
-  echo "Contents of MyApp_unpack/Payload:"
-  ls -la MyApp_unpack/Payload || true
+          echo "Contents of MyApp_unpack/Payload:"
+          ls -la MyApp_unpack/Payload || true
 
-  # find the first .app directory inside Payload (search two levels just in case)
-  APP_PATH="$(find MyApp_unpack/Payload -maxdepth 3 -type d -name '*.app' -print -quit || true)"
+          # find the first .app directory inside Payload (search two levels just in case)
+          APP_PATH="$(find MyApp_unpack/Payload -maxdepth 3 -type d -name '*.app' -print -quit || true)"
 
-  if [ -z "$APP_PATH" ]; then
-    echo "ERROR: could not find any .app inside the IPA payload."
-    echo "Full tree of MyApp_unpack for debugging:"
-    find MyApp_unpack -type f -maxdepth 6 -print || true
-    exit 1
-  fi
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: could not find any .app inside the IPA payload."
+            echo "Full tree of MyApp_unpack for debugging:"
+            find MyApp_unpack -type f -maxdepth 6 -print || true
+            exit 1
+          fi
 
-  echo "App path: $APP_PATH"
+          echo "App path: $APP_PATH"
 
-  # embed provisioning profile (must match bundle ID)
-  cp "$WORKDIR/profile.mobileprovision" "$APP_PATH/embedded.mobileprovision"
-  echo "Embedded provisioning profile."
+          # embed provisioning profile (must match bundle ID)
+          cp "$WORKDIR/profile.mobileprovision" "$APP_PATH/embedded.mobileprovision"
+          echo "Embedded provisioning profile."
 
-  # extract entitlements from the provisioning profile
-  security cms -D -i "$WORKDIR/profile.mobileprovision" > profile.plist
-  /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' profile.plist > Entitlements.plist || true
-  echo "Entitlements written to: $(pwd)/Entitlements.plist"
+          # extract entitlements from the provisioning profile
+          security cms -D -i "$WORKDIR/profile.mobileprovision" > profile.plist
+          /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' profile.plist > Entitlements.plist || true
+          echo "Entitlements written to: $(pwd)/Entitlements.plist"
 
-  # remove extended attributes
-  xattr -cr "$APP_PATH" || true
+          # remove extended attributes
+          xattr -cr "$APP_PATH" || true
 
-  # choose identity
-  IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*\"\(Apple Distribution:.*\)\".*/\1/p' | head -n1)"
-  if [ -z "$IDENTITY" ]; then
-    echo "ERROR: no Apple Distribution identity found in keychain"; exit 1
-  fi
-  echo "Using signing identity: $IDENTITY"
+          # choose identity
+          IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*\"\(Apple Distribution:.*\)\".*/\1/p' | head -n1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "ERROR: no Apple Distribution identity found in keychain"; exit 1
+          fi
+          echo "Using signing identity: $IDENTITY"
 
-  # sign nested code
-  find "$APP_PATH" -type d -name "*.framework" -print0 | while IFS= read -r -d '' F; do
-    echo "  Signing framework: $F"
-    codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$F" || true
-  done
+          # sign nested code
+          find "$APP_PATH" -type d -name "*.framework" -print0 | while IFS= read -r -d '' F; do
+            echo "  Signing framework: $F"
+            codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$F" || true
+          done
 
-  find "$APP_PATH" -type f -name "*.dylib" -print0 | while IFS= read -r -d '' D; do
-    echo "  Signing dylib: $D"
-    codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$D" || true
-  done
+          find "$APP_PATH" -type f -name "*.dylib" -print0 | while IFS= read -r -d '' D; do
+            echo "  Signing dylib: $D"
+            codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$D" || true
+          done
 
-  find "$APP_PATH" -type d -name "*.appex" -print0 | while IFS= read -r -d '' E; do
-    echo "  Signing appex: $E"
-    codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$E" || true
-  done
+          find "$APP_PATH" -type d -name "*.appex" -print0 | while IFS= read -r -d '' E; do
+            echo "  Signing appex: $E"
+            codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$E" || true
+          done
 
-  # sign main app
-  echo "Signing main app: $APP_PATH"
-  codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$APP_PATH"
+          # sign main app
+          echo "Signing main app: $APP_PATH"
+          codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$APP_PATH"
 
-  echo "Verifying main app signature..."
-  codesign -vvv --deep --strict "$APP_PATH" 2>&1 || true
-  codesign -d --entitlements :- "$APP_PATH" || true
-  spctl -a -t exec -vv "$APP_PATH" || true
+          echo "Verifying main app signature..."
+          codesign -vvv --deep --strict "$APP_PATH" 2>&1 || true
+          codesign -d --entitlements :- "$APP_PATH" || true
+          spctl -a -t exec -vv "$APP_PATH" || true
 
-  # Repack
-  cd MyApp_unpack
-  zip -qry ../SignedApp.ipa Payload
-  cd ..
-  echo "Signed IPA created at: $WORKDIR/SignedApp.ipa"
-  ls -l "$WORKDIR/SignedApp.ipa"
-"
+          # Repack
+          cd MyApp_unpack
+          zip -qry ../SignedApp.ipa Payload
+          cd ..
+          echo "Signed IPA created at: $WORKDIR/SignedApp.ipa"
+          ls -l "$WORKDIR/SignedApp.ipa"
 
       - name: Upload signed IPA artifact
         uses: actions/upload-artifact@v4
