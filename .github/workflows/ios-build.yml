@@ -1,25 +1,39 @@
-name: Build iOS IPA
+name: iOS Resign
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # you can run it manually
 
 jobs:
   build:
     runs-on: macos-latest
 
     steps:
-      - uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.27.1'  # or your version
+    - name: Decode certificate
+      run: |
+        echo "$P12_BASE64" | base64 --decode > cert.p12
+        security create-keychain -p "" build.keychain
+        security import cert.p12 -k build.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
+        security list-keychains -s build.keychain
+        security unlock-keychain -p "" build.keychain
+        security set-key-partition-list -S apple-tool:,apple:,codesign -s -k "" build.keychain
 
-      - run: flutter pub get
+    - name: Decode provisioning profile
+      run: |
+        mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+        echo "$MOBILEPROVISION_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/app.mobileprovision
 
-      - run: flutter build ios --release --no-codesign
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ios-release
-          path: build/ios/iphoneos/Runner.app
+    - name: Resign IPA
+      run: |
+        mkdir resign-output
+        cp your-app.ipa resign-output/
+        # unzip ipa
+        cd resign-output
+        unzip your-app.ipa -d Payload
+        # sign
+        codesign -f -s "Apple Distribution: YOUR NAME (TEAMID)" Payload/YourApp.app
+        # repackage
+        zip -r resigned.ipa Payload
+        cd ..
