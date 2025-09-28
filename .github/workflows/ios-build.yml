@@ -10,10 +10,8 @@ jobs:
   resign:
     runs-on: macos-latest
     env:
-      # path *inside the repo* (relative to repo root) -- NO leading slash
+      # path inside the repo to your unsigned ipa (relative to repo root)
       IPA_INPUT_PATH: ".github/workflows/MyApp.ipa"
-      # working directory on the runner (temp)
-      WORKDIR: ${{ runner.temp }}/resign_workdir
 
     steps:
       - name: Checkout repo
@@ -22,6 +20,7 @@ jobs:
       - name: Prepare workspace
         run: |
           set -euo pipefail
+          WORKDIR="$RUNNER_TEMP/resign_workdir"
           echo "WORKDIR: $WORKDIR"
           rm -rf "$WORKDIR"
           mkdir -p "$WORKDIR"
@@ -34,6 +33,8 @@ jobs:
           MOBILEPROVISION_BASE64: ${{ secrets.MOBILEPROVISION_BASE64 }}
         run: |
           set -euo pipefail
+          WORKDIR="$RUNNER_TEMP/resign_workdir"
+          mkdir -p "$WORKDIR"
           printf '%s' "$P12_BASE64" | base64 --decode > "$WORKDIR/cert.p12"
           printf '%s' "$MOBILEPROVISION_BASE64" | base64 --decode > "$WORKDIR/profile.mobileprovision"
           echo "Decoded files:"
@@ -46,41 +47,35 @@ jobs:
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
+          WORKDIR="$RUNNER_TEMP/resign_workdir"
           KEYCHAIN="$RUNNER_TEMP/build.keychain"
           echo "Creating keychain: $KEYCHAIN"
-          # create keychain using non-empty password from secrets
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          # add it to the keychain list (so security and codesign find it)
           security list-keychains -s "$KEYCHAIN" $(security list-keychains | sed -n 's/^[[:space:]]*"\(.*\)".*$/\1/p') || true
-          # make it the default for this session (optional but useful)
           security default-keychain -s "$KEYCHAIN"
-          # import certificate (allow codesign to use it)
           security import "$WORKDIR/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -A
-          # unlock keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          # set key partition list so codesign can access private key without interactive prompt
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          echo "Keychain import done. Listing code signing identities:"
+          echo "Keychain import done. Listing identities:"
           security find-identity -v -p codesigning || true
 
       - name: Install Apple WWDR intermediate cert (needed to build chain)
         run: |
           set -euo pipefail
-          # Download Apple's intermediate WWDR certificate (G3)
           WWDR="/tmp/AppleWWDRCA.cer"
-          echo "Downloading WWDR cert to $WWDR"
           curl -fsSL -o "$WWDR" "https://developer.apple.com/certificationauthority/AppleWWDRCAG3.cer" || true
           if [ -s "$WWDR" ]; then
             security import "$WWDR" -k "$RUNNER_TEMP/build.keychain" -A || true
             echo "Imported WWDR cert."
           else
-            echo "WWDR certificate not downloaded; if signing fails make sure intermediate cert is present."
+            echo "WWDR certificate not downloaded; ensure intermediate cert is available."
           fi
           security find-certificate -a -c "Apple Worldwide Developer Relations" || true
 
       - name: Resign IPA (unpack, embed profile, sign nested, sign app, repack)
         run: |
           set -euo pipefail
+          WORKDIR="$RUNNER_TEMP/resign_workdir"
           cd "$WORKDIR"
 
           echo "Copying IPA from repo: $GITHUB_WORKSPACE/${IPA_INPUT_PATH}"
@@ -95,26 +90,21 @@ jobs:
           fi
           echo "App path: $APP_PATH"
 
-          # embed provisioning profile
           cp "$WORKDIR/profile.mobileprovision" "$APP_PATH/embedded.mobileprovision"
           echo "Embedded provisioning profile."
 
-          # extract entitlements from the provisioning profile
           security cms -D -i "$WORKDIR/profile.mobileprovision" > profile.plist
           /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' profile.plist > Entitlements.plist || true
           echo "Entitlements written to: $(pwd)/Entitlements.plist"
 
-          # remove extended attributes (common cause of signing issues)
           xattr -cr "$APP_PATH" || true
 
-          # pick identity (first Apple Distribution identity)
           IDENTITY="$(security find-identity -v -p codesigning | sed -n 's/.*\"\(Apple Distribution:.*\)\".*/\1/p' | head -n1)"
           if [ -z "$IDENTITY" ]; then
             echo "ERROR: no Apple Distribution identity found in keychain"; exit 1
           fi
           echo "Using signing identity: $IDENTITY"
 
-          # sign nested code (frameworks, dylibs, appex)
           echo "Signing frameworks..."
           find "$APP_PATH" -type d -name "*.framework" -print0 | while IFS= read -r -d '' F; do
             echo "  Signing framework: $F"
@@ -133,17 +123,14 @@ jobs:
             codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$E" || true
           done
 
-          # sign main app
           echo "Signing main app: $APP_PATH"
           codesign --force --sign "$IDENTITY" --entitlements Entitlements.plist --options runtime --timestamp=none "$APP_PATH"
 
-          # verify
           echo "Verifying..."
           codesign -vvv --deep --strict "$APP_PATH" 2>&1 || true
           codesign -d --entitlements :- "$APP_PATH" || true
           spctl -a -t exec -vv "$APP_PATH" || true
 
-          # repack
           cd MyApp_unpack
           zip -qry ../SignedApp.ipa Payload
           cd ..
