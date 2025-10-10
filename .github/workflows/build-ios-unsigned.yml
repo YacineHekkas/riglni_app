@@ -1,4 +1,4 @@
-name: Build iOS (unsigned .ipa)
+name: Build iOS (debug CocoaPods resolution)
 
 on:
   workflow_dispatch:
@@ -6,12 +6,8 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
-  actions: read
-
 jobs:
-  build-ios-unsigned:
+  debug-pods:
     runs-on: macos-latest
     env:
       FLUTTER_CHANNEL: "stable"
@@ -22,98 +18,97 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cache pub packages
-        uses: actions/cache@v4
-        id: cache-pub
-        with:
-          path: |
-            ~/.pub-cache
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: ${{ runner.os }}-pub- 
+      - name: Print repo info
+        run: |
+          echo "Running on $(uname -a)"
+          sw_vers || true
 
-      - name: Set up Flutter (stable channel)
+      - name: Set up Flutter (stable)
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      - name: Verify flutter & environment
+      - name: Verify Flutter
         run: |
           flutter --version
           flutter doctor -v
-          uname -a
-          sw_vers || true
 
-      - name: Setup Ruby (for CocoaPods)
+      - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: 3.0
 
-      - name: Install CocoaPods gems
+      - name: Install CocoaPods (pinned) and helpers
         run: |
+          # pin CocoaPods, fallback to latest if pin fails
           gem install cocoapods -v '1.16.2' --no-document || gem install cocoapods --no-document
           gem install cocoapods-deintegrate cocoapods-clean --no-document || true
           pod --version
 
+      - name: Show Podfile and Podfile.lock (for debug)
+        working-directory: ios
+        run: |
+          echo "===== Podfile ====="
+          sed -n '1,240p' Podfile || true
+          echo ""
+          echo "===== Podfile.lock ====="
+          if [ -f Podfile.lock ]; then
+            sed -n '1,240p' Podfile.lock
+          else
+            echo "(no Podfile.lock present)"
+          fi
+
       - name: flutter pub get
         run: flutter pub get
 
-      - name: Cache CocoaPods (optional)
-        uses: actions/cache@v4
-        id: cache-cocoapods
-        with:
-          path: |
-            ~/Library/Caches/CocoaPods
-            ios/Pods
-          key: ${{ runner.os }}-cocoapods-${{ hashFiles('ios/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cocoapods-
-
-      - name: Print Podfile (for debug)
-        working-directory: ios
-        run: |
-          echo "------ Podfile ----------------"
-          sed -n '1,200p' Podfile || true
-          echo "------ Podfile.lock (if exists) ---"
-          [ -f Podfile.lock ] && sed -n '1,200p' Podfile.lock || echo "no Podfile.lock"
-
-      - name: Prepare iOS pods (robust)
+      - name: Run verbose pod install and save log
         working-directory: ios
         run: |
           set -eux
-          # Clean old CocoaPods state (safe in CI)
-          rm -rf Pods Podfile.lock .symlinks
-          # Optional: remove cached builds
+          rm -rf Pods Podfile.lock .symlinks || true
           rm -rf ~/Library/Caches/CocoaPods || true
-          # Ensure CocoaPods specs are up to date
+          # Make sure the specs repo is up to date
           pod repo update --silent || true
-          # Reinstall pods, forcing repo refresh
-          pod install --repo-update --verbose
+          # Run verbose install and always write a log (we'll upload it)
+          pod install --repo-update --verbose > pod_install.log 2>&1 || true
+          echo "exit_code:$?" > pod_exit_code.txt
+          ls -la pod_install.log
+          tail -n +1 pod_install.log | sed -n '1,400p' || true
 
-      - name: Build iOS (no codesign)
-        run: |
-          set -eux
-          # Build iOS without code signing; ensure Flutter creates an iOS device build
-          flutter build ios --release --no-codesign
+      - name: Upload CocoaPods logs and Podfile.lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: cocoapods-debug-output
+          path: |
+            ios/pod_install.log
+            ios/pod_exit_code.txt
+            ios/Podfile
+            ios/Podfile.lock
 
-      - name: Locate built .app
+      - name: Fail if pod install failed (with message)
+        working-directory: ios
         run: |
-          set -eux
-          APP_PATH="build/ios/iphoneos/Runner.app"
-          if [ ! -d "$APP_PATH" ]; then
-            echo "Runner.app not found at $APP_PATH. Listing build/ios:"
-            ls -la build/ios || true
+          code=$(cat pod_exit_code.txt || echo "1")
+          if [ "$code" != "0" ]; then
+            echo "pod install failed. See uploaded artifact 'cocoapods-debug-output' for full log."
             exit 1
           fi
-          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+
+      - name: Build iOS (no codesign) - only runs if pods installed
+        run: |
+          flutter build ios --release --no-codesign
 
       - name: Package unsigned .ipa
         run: |
-          set -eux
-          rm -rf Payload unsigned.ipa
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Runner.app not found at $APP_PATH"
+            exit 1
+          fi
+          rm -rf Payload unsigned.ipa || true
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           zip -r unsigned.ipa Payload
-          ls -lh unsigned.ipa
 
       - name: Upload unsigned .ipa artifact
         uses: actions/upload-artifact@v4
