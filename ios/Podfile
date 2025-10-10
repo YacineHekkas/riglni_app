@@ -10,6 +10,9 @@ project 'Runner', {
   'Release' => :release,
 }
 
+# Optional: pin Firebase iOS SDK version (remove this line if you want CocoaPods to resolve latest)
+$FirebaseSDKVersion = '10.23.0'
+
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
   unless File.exist?(generated_xcode_build_settings_path)
@@ -32,73 +35,64 @@ target 'Runner' do
   use_modular_headers!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-  $FirebaseSDKVersion='10.23.0'
+  # If you prefer CocoaPods to pick the Firebase SDK, comment the line below
+  # $FirebaseSDKVersion='10.23.0'
 end
 
-
-
 target 'ImageNotification' do
-   use_frameworks!
-   pod 'Firebase/Messaging'
-   pod 'GoogleUtilities/Environment'
-   pod 'GoogleUtilities/Logger'
-   pod 'GoogleUtilities/Network'
-   pod 'GoogleUtilities/UserDefaults'
+  use_frameworks!
+  # Keep explicit pods for this target if you need them
+  pod 'Firebase/Messaging'
+  pod 'GoogleUtilities/Environment'
+  pod 'GoogleUtilities/Logger'
+  pod 'GoogleUtilities/Network'
+  pod 'GoogleUtilities/UserDefaults'
 end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
-      if target.name == 'BoringSSL-GRPC'
-            target.source_build_phase.files.each do |file|
-              if file.settings && file.settings['COMPILER_FLAGS']
-                flags = file.settings['COMPILER_FLAGS'].split
-                flags.reject! { |flag| flag == '-GCC_WARN_INHIBIT_ALL_WARNINGS' }
-                file.settings['COMPILER_FLAGS'] = flags.join(' ')
-              end
-            end
-          end
+    # Fix BoringSSL-GRPC compiler flags issue (keeps your previous logic)
+    if target.name == 'BoringSSL-GRPC'
+      target.source_build_phase.files.each do |file|
+        if file.settings && file.settings['COMPILER_FLAGS']
+          flags = file.settings['COMPILER_FLAGS'].split
+          flags.reject! { |flag| flag == '-GCC_WARN_INHIBIT_ALL_WARNINGS' }
+          file.settings['COMPILER_FLAGS'] = flags.join(' ')
+        end
+      end
+    end
+
+    # Apply Flutter's additional iOS build settings helper
     flutter_additional_ios_build_settings(target)
+
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      # Make sure every pod target uses the same (high-enough) iOS deployment target
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+
+      # Avoid bitcode problems on CI / Xcode settings
+      config.build_settings['ENABLE_BITCODE'] = 'NO'
+
+      # If running on Apple Silicon CI or building simulator slices on macOS runners,
+      # exclude arm64 for the simulator to avoid architecture mismatch errors:
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+
+      # Keep any preprocessor definitions you already had
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
         '$(inherited)',
-
-        ## dart: PermissionGroup.calendar
-        #  'PERMISSION_EVENTS=1',
-
-        ## dart: PermissionGroup.reminders
-        # 'PERMISSION_REMINDERS=1',
-
-        ## dart: PermissionGroup.contacts
-        # 'PERMISSION_CONTACTS=1',
-
         ## dart: PermissionGroup.camera
-         'PERMISSION_CAMERA=1',
-
-        ## dart: PermissionGroup.microphone
-        # 'PERMISSION_MICROPHONE=1',
-
-        ## dart: PermissionGroup.speech
-        # 'PERMISSION_SPEECH_RECOGNIZER=1',
-
+        'PERMISSION_CAMERA=1',
         ## dart: PermissionGroup.photos
-         'PERMISSION_PHOTOS=1',
-
+        'PERMISSION_PHOTOS=1',
         ## dart: [PermissionGroup.location, PermissionGroup.locationAlways, PermissionGroup.locationWhenInUse]
-         'PERMISSION_LOCATION=1',
-
+        'PERMISSION_LOCATION=1',
         ## dart: PermissionGroup.notification
-         'PERMISSION_NOTIFICATIONS=1',
-
+        'PERMISSION_NOTIFICATIONS=1',
         ## dart: PermissionGroup.mediaLibrary
-         'PERMISSION_MEDIA_LIBRARY=1',
-
-        ## dart: PermissionGroup.sensors
-        # 'PERMISSION_SENSORS=1'
-
+        'PERMISSION_MEDIA_LIBRARY=1',
       ]
-      config.build_settings['ENABLE_BITCODE'] = 'NO'
-	end
-
+    end
   end
+
+  # Keep any Flutter-supplied post install workaround if present
+  __apply_Xcode_12_5_M1_post_install_workaround(installer) if defined?(__apply_Xcode_12_5_M1_post_install_workaround)
 end
