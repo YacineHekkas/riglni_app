@@ -10,7 +10,7 @@ jobs:
   build-ios-unsigned:
     runs-on: macos-latest
     env:
-      # Only set the channel; DO NOT set FLUTTER_VERSION (remove any FLUTTER_VERSION="latest")
+      # Only set the channel; DO NOT set FLUTTER_VERSION
       FLUTTER_CHANNEL: "stable"
 
     steps:
@@ -29,22 +29,29 @@ jobs:
 
       - name: Install Ruby gems (CocoaPods)
         run: |
-          # Install CocoaPods (version selection optional)
+          # Install CocoaPods (you may pin a version if needed)
           sudo gem install cocoapods || true
           pod --version
 
       - name: flutter pub get
         run: flutter pub get
 
-      - name: Prepare iOS pods
+      - name: Prepare iOS pods (robust)
         working-directory: ios
         run: |
+          set -eux
+          # Clean old CocoaPods state (safe in CI)
+          rm -rf Pods Podfile.lock .symlinks
+          # Optional: remove cached builds
+          rm -rf ~/Library/Caches/CocoaPods || true
+          # Ensure mobile-specs are up to date
           pod repo update --silent || true
-          pod install --silent
+          # Reinstall pods, forcing repo refresh
+          pod install --repo-update --verbose
 
       - name: Build iOS (no codesign)
         run: |
-          # Build iOS without code signing
+          # Build iOS without code signing (produces Runner.app)
           flutter build ios --release --no-codesign
 
       - name: Locate built .app
