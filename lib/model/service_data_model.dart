@@ -1,10 +1,82 @@
 import 'package:booking_system_flutter/model/package_data_model.dart';
 import 'package:booking_system_flutter/model/slot_data.dart';
+import 'package:booking_system_flutter/utils/configs.dart';
 import 'package:booking_system_flutter/utils/constant.dart';
 import 'package:nb_utils/nb_utils.dart';
 
 import '../utils/app_configuration.dart';
 import '../utils/model_keys.dart';
+
+String normalizeImageUrl(String? raw, {String baseUrl = 'http://riglni.com'}) {
+
+if (raw == null) return '';
+var s = raw.trim();
+if (s.isEmpty) return '';
+
+// ensure base has no trailing slash
+final baseUri = Uri.parse(baseUrl.replaceAll(RegExp(r'/$'), ''));
+
+// add scheme if missing
+final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+\-.]*:').hasMatch(s);
+var candidate = hasScheme ? s : '${baseUri.origin}/${s.replaceFirst(RegExp(r'^/+'), '')}';
+
+// basic cleanup
+candidate = candidate.replaceAll('\\', '/').replaceAll(RegExp(r'[\x00-\x1F\x7F]'), '');
+
+Uri parsed;
+try {
+parsed = Uri.parse(candidate);
+} catch (_) {
+parsed = Uri.parse(Uri.encodeFull(candidate));
+}
+
+// Encode each path segment strictly
+final encodedSegments = parsed.pathSegments.map((seg) => Uri.encodeComponent(seg)).toList();
+var encodedPath = encodedSegments.join('/');
+
+// preserve leading/trailing slash if present in original
+if (parsed.path.startsWith('/') && !encodedPath.startsWith('/')) encodedPath = '/$encodedPath';
+if (parsed.path.endsWith('/') && !encodedPath.endsWith('/')) encodedPath = '$encodedPath/';
+
+// choose scheme/host/port: prefer parsed values, fallback to baseUri
+final scheme = parsed.scheme.isEmpty ? baseUri.scheme : parsed.scheme;
+final host = parsed.host.isEmpty ? baseUri.host : parsed.host;
+final port = parsed.hasPort ? ':${parsed.port}' : (baseUri.hasPort ? ':${baseUri.port}' : '');
+
+final sb = StringBuffer();
+sb.write('$scheme://$host$port');
+
+if (encodedPath.isNotEmpty) {
+if (!encodedPath.startsWith('/')) sb.write('/');
+sb.write(encodedPath);
+} else if (parsed.path == '/') {
+sb.write('/');
+}
+
+// encode query params if any
+if (parsed.queryParametersAll.isNotEmpty) {
+final pairs = <String>[];
+parsed.queryParametersAll.forEach((k, vs) {
+final ek = Uri.encodeQueryComponent(k);
+for (final v in vs) {
+pairs.add('$ek=${Uri.encodeQueryComponent(v)}');
+}
+});
+sb.write('?${pairs.join('&')}');
+}
+
+// fragment
+if (parsed.fragment.isNotEmpty) {
+sb.write('#${Uri.encodeComponent(parsed.fragment)}');
+}
+
+// last safeguard: force-encode parentheses
+var result = sb.toString();
+result = result.replaceAll('(', '%28').replaceAll(')', '%29');
+
+return result;
+}
+
 
 class ServiceData {
   int? id;
@@ -126,7 +198,7 @@ class ServiceData {
       isFeatured: json['is_featured'],
       providerName: json['provider_name'],
       categoryName: json['category_name'],
-      attachments: json['attchments'] != null ? new List<String>.from(json['attchments']) : null,
+      attachments: json['attchments'] != null ? new  List<String>.from(json['attchments']).map((e) => normalizeImageUrl(e?.toString(), baseUrl: DOMAIN_URL)).toList() : null,
       totalReview: json['total_review'],
       totalRating: json['total_rating'],
       isFavourite: json['is_favourite'],

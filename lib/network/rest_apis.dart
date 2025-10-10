@@ -454,12 +454,9 @@ Future<ServiceDetailResponse> getServiceDetails({required int serviceId, int? cu
   Map request = {CommonKeys.serviceId: serviceId, if (appStore.isLoggedIn) CommonKeys.customerId: customerId};
   try {
     var res = ServiceDetailResponse.fromJson(await handleResponse(await buildHttpResponse('service-detail', request: request, method: HttpMethodType.POST)));
-
-    // res.serviceDetail?.name = localizeText(res.serviceDetail?.name,appStore.selectedLanguageCode);
-    // res.serviceDetail?.categoryName= localizeText(res.serviceDetail?.categoryName,appStore.selectedLanguageCode);
-    // res.serviceDetail?.subCategoryName = localizeText(res.serviceDetail?.subCategoryName,appStore.selectedLanguageCode);
-
+print(    res.serviceDetail?.attachments?.first );
     print("3434");
+
     print(res.serviceDetail?.name);
     if (res.serviceDetail?.name != null || res.serviceDetail?.categoryName != null || res.serviceDetail?.subCategoryName != null)
     {

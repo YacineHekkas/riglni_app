@@ -53,8 +53,8 @@ android {
         applicationId 'com.hkuser.riglni'
         minSdkVersion 23
         targetSdkVersion 35
-        versionCode 99
-        versionName '11.10.1'
+        versionCode 100
+        versionName '11.10.2'
     }
     
     signingConfigs {
