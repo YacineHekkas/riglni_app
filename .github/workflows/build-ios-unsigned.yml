@@ -10,8 +10,9 @@ jobs:
   build-ios-unsigned:
     runs-on: macos-latest
     env:
-      FLUTTER_CHANNEL: "stable"   # change if you want a different channel
-      FLUTTER_VERSION: "latest"   # or a specific version like "3.10.6"
+      # Only set the channel; DO NOT set FLUTTER_VERSION (remove any FLUTTER_VERSION="latest")
+      FLUTTER_CHANNEL: "stable"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,9 +22,15 @@ jobs:
         with:
           channel: stable
 
+      - name: Verify flutter
+        run: |
+          flutter --version
+          flutter doctor -v
+
       - name: Install Ruby gems (CocoaPods)
         run: |
-          sudo gem install cocoapods -v 1.12.1 || true
+          # Install CocoaPods (version selection optional)
+          sudo gem install cocoapods || true
           pod --version
 
       - name: flutter pub get
@@ -35,24 +42,14 @@ jobs:
           pod repo update --silent || true
           pod install --silent
 
-      # Option A: Use flutter to build without codesigning (recommended)
-      - name: Build iOS (no codesign) - flutter
+      - name: Build iOS (no codesign)
         run: |
+          # Build iOS without code signing
           flutter build ios --release --no-codesign
-
-      # Option B (fallback): Use xcodebuild directly to build with codesigning turned off
-      # (uncomment if flutter build fails on your Flutter version)
-      # - name: Build iOS with xcodebuild (no codesign)
-      #   working-directory: ios
-      #   run: |
-      #     xcodebuild clean -workspace Runner.xcworkspace -scheme Runner -configuration Release
-      #     xcodebuild -workspace Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release \
-      #       BUILD_DIR=../build/ios CODE_SIGNING_ALLOWED=NO
 
       - name: Locate built .app
         run: |
           set -eux
-          # Flutter normally writes the device build to build/ios/iphoneos/Runner.app
           APP_PATH="build/ios/iphoneos/Runner.app"
           if [ ! -d "$APP_PATH" ]; then
             echo "Runner.app not found at $APP_PATH. Listing build/ios:"
