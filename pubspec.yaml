@@ -11,6 +11,17 @@ dependencies:
   flutter:
     sdk: flutter
 
+
+  firebase_core: ^4.1.1
+  firebase_messaging: ^16.0.2
+  firebase_auth: ^6.1.0
+  cloud_firestore: ^6.0.2
+  firebase_storage: ^13.0.2
+  firebase_crashlytics: ^5.0.2
+
+  # other google/firebase related plugins you use:
+  google_maps_flutter: ^2.13.1
+
   # COMMON
   nb_utils: ^7.0.7
   google_fonts: ^6.2.1
@@ -24,15 +35,10 @@ dependencies:
   google_mobile_ads: ^6.0.0
 
   # FIREBASE
-  firebase_core: ^3.12.1
-  firebase_crashlytics: ^4.3.4
-  firebase_auth: ^5.5.1
-  firebase_storage: ^12.3.3
-  cloud_firestore: ^5.6.5
+
   firebase_pagination: ^4.1.0
 
   # FIREBASE MESSAGING
-  firebase_messaging: ^15.2.4
   flutter_local_notifications: ^19.0.0
 
   # STATE MANAGEMENT
@@ -88,7 +94,6 @@ dependencies:
 
 
   # MAP
-  google_maps_flutter: ^2.9.0
   geolocator: ^13.0.1
   geocoding: ^3.0.0
 
