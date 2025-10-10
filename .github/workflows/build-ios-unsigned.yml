@@ -1,0 +1,79 @@
+name: Build iOS (unsigned .ipa)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-ios-unsigned:
+    runs-on: macos-latest
+    env:
+      FLUTTER_CHANNEL: "stable"   # change if you want a different channel
+      FLUTTER_VERSION: "latest"   # or a specific version like "3.10.6"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Install Ruby gems (CocoaPods)
+        run: |
+          sudo gem install cocoapods -v 1.12.1 || true
+          pod --version
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Prepare iOS pods
+        working-directory: ios
+        run: |
+          pod repo update --silent || true
+          pod install --silent
+
+      # Option A: Use flutter to build without codesigning (recommended)
+      - name: Build iOS (no codesign) - flutter
+        run: |
+          flutter build ios --release --no-codesign
+
+      # Option B (fallback): Use xcodebuild directly to build with codesigning turned off
+      # (uncomment if flutter build fails on your Flutter version)
+      # - name: Build iOS with xcodebuild (no codesign)
+      #   working-directory: ios
+      #   run: |
+      #     xcodebuild clean -workspace Runner.xcworkspace -scheme Runner -configuration Release
+      #     xcodebuild -workspace Runner.xcworkspace -scheme Runner -sdk iphoneos -configuration Release \
+      #       BUILD_DIR=../build/ios CODE_SIGNING_ALLOWED=NO
+
+      - name: Locate built .app
+        run: |
+          set -eux
+          # Flutter normally writes the device build to build/ios/iphoneos/Runner.app
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Runner.app not found at $APP_PATH. Listing build/ios:"
+            ls -la build/ios || true
+            exit 1
+          fi
+          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+
+      - name: Package unsigned .ipa
+        run: |
+          set -eux
+          rm -rf Payload unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          # Create unsigned IPA by zipping the Payload folder
+          zip -r unsigned.ipa Payload
+          ls -lh unsigned.ipa
+
+      - name: Upload unsigned .ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-ios-ipa
+          path: unsigned.ipa
