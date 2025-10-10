@@ -6,35 +6,75 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build-ios-unsigned:
     runs-on: macos-latest
     env:
-      # Only set the channel; DO NOT set FLUTTER_VERSION
       FLUTTER_CHANNEL: "stable"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        id: cache-pub
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-pub- 
 
       - name: Set up Flutter (stable channel)
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      - name: Verify flutter
+      - name: Verify flutter & environment
         run: |
           flutter --version
           flutter doctor -v
+          uname -a
+          sw_vers || true
 
-      - name: Install Ruby gems (CocoaPods)
+      - name: Setup Ruby (for CocoaPods)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.0
+
+      - name: Install CocoaPods gems
         run: |
-          # Install CocoaPods (you may pin a version if needed)
-          sudo gem install cocoapods || true
+          gem install cocoapods -v '1.16.2' --no-document || gem install cocoapods --no-document
+          gem install cocoapods-deintegrate cocoapods-clean --no-document || true
           pod --version
 
       - name: flutter pub get
         run: flutter pub get
+
+      - name: Cache CocoaPods (optional)
+        uses: actions/cache@v4
+        id: cache-cocoapods
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ios/Pods
+          key: ${{ runner.os }}-cocoapods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cocoapods-
+
+      - name: Print Podfile (for debug)
+        working-directory: ios
+        run: |
+          echo "------ Podfile ----------------"
+          sed -n '1,200p' Podfile || true
+          echo "------ Podfile.lock (if exists) ---"
+          [ -f Podfile.lock ] && sed -n '1,200p' Podfile.lock || echo "no Podfile.lock"
 
       - name: Prepare iOS pods (robust)
         working-directory: ios
@@ -44,14 +84,15 @@ jobs:
           rm -rf Pods Podfile.lock .symlinks
           # Optional: remove cached builds
           rm -rf ~/Library/Caches/CocoaPods || true
-          # Ensure mobile-specs are up to date
+          # Ensure CocoaPods specs are up to date
           pod repo update --silent || true
           # Reinstall pods, forcing repo refresh
           pod install --repo-update --verbose
 
       - name: Build iOS (no codesign)
         run: |
-          # Build iOS without code signing (produces Runner.app)
+          set -eux
+          # Build iOS without code signing; ensure Flutter creates an iOS device build
           flutter build ios --release --no-codesign
 
       - name: Locate built .app
@@ -71,7 +112,6 @@ jobs:
           rm -rf Payload unsigned.ipa
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
-          # Create unsigned IPA by zipping the Payload folder
           zip -r unsigned.ipa Payload
           ls -lh unsigned.ipa
 
