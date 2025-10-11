@@ -13,18 +13,21 @@ dependencies:
 
 
   firebase_core: ^4.1.1
-  firebase_messaging: ^16.0.2
   firebase_auth: ^6.1.0
+  firebase_messaging: ^16.0.2
   cloud_firestore: ^6.0.2
   firebase_storage: ^13.0.2
   firebase_crashlytics: ^5.0.2
 
   # other google/firebase related plugins you use:
-  google_maps_flutter: ^2.13.1
 
+  # Google / Maps / sign-in
+  google_sign_in: ^6.2.1
+  google_maps_flutter: ^2.13.1
   # COMMON
-  nb_utils: ^7.0.7
-  google_fonts: ^6.2.1
+  nb_utils: ^7.1.8
+
+  google_fonts: ^6.3.0
   html: ^0.15.4
   http: ^1.2.2
   intl:
@@ -65,7 +68,6 @@ dependencies:
   file_picker: ^8.1.2
 
   # SOCIAL LOGIN
-  google_sign_in: ^6.2.1
   the_apple_sign_in: ^1.1.1
 
   # PAYMENT GATEWAYS
