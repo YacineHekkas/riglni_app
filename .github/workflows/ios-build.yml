@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-latest
     env:
       # Path inside the repo to your unsigned ipa (relative to repo root)
-      IPA_INPUT_PATH: ".github/workflows/MyApp.ipa"
+      IPA_INPUT_PATH: ".github/workflows/MyApp1.ipa"
 
     steps:
       - name: Checkout repo
