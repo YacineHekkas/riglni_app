@@ -1,5 +1,5 @@
 # Uncomment this line to define a global platform for your project
-platform :ios, '14.0'
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -10,7 +10,7 @@ project 'Runner', {
   'Release' => :release,
 }
 
-# Optional: pin Firebase iOS SDK version (remove this line if you want CocoaPods to resolve latest)
+# Optional: pin Firebase iOS SDK version (remove/comment if you want CocoaPods to pick latest)
 $FirebaseSDKVersion = '10.23.0'
 
 def flutter_root
@@ -51,7 +51,7 @@ end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
-    # Fix BoringSSL-GRPC compiler flags issue (keeps your previous logic)
+    # Retain your BoringSSL-GRPC fix
     if target.name == 'BoringSSL-GRPC'
       target.source_build_phase.files.each do |file|
         if file.settings && file.settings['COMPILER_FLAGS']
@@ -62,37 +62,27 @@ post_install do |installer|
       end
     end
 
-    # Apply Flutter's additional iOS build settings helper
     flutter_additional_ios_build_settings(target)
 
     target.build_configurations.each do |config|
-      # Make sure every pod target uses the same (high-enough) iOS deployment target
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+      # Force a high-enough deployment target for all pods
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
 
-      # Avoid bitcode problems on CI / Xcode settings
+      # Avoid bitcode problems and reduce CI arch issues
       config.build_settings['ENABLE_BITCODE'] = 'NO'
-
-      # If running on Apple Silicon CI or building simulator slices on macOS runners,
-      # exclude arm64 for the simulator to avoid architecture mismatch errors:
       config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
 
-      # Keep any preprocessor definitions you already had
+      # Preserve your preprocessor definitions
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
         '$(inherited)',
-        ## dart: PermissionGroup.camera
         'PERMISSION_CAMERA=1',
-        ## dart: PermissionGroup.photos
         'PERMISSION_PHOTOS=1',
-        ## dart: [PermissionGroup.location, PermissionGroup.locationAlways, PermissionGroup.locationWhenInUse]
         'PERMISSION_LOCATION=1',
-        ## dart: PermissionGroup.notification
         'PERMISSION_NOTIFICATIONS=1',
-        ## dart: PermissionGroup.mediaLibrary
         'PERMISSION_MEDIA_LIBRARY=1',
       ]
     end
   end
 
-  # Keep any Flutter-supplied post install workaround if present
   __apply_Xcode_12_5_M1_post_install_workaround(installer) if defined?(__apply_Xcode_12_5_M1_post_install_workaround)
 end
